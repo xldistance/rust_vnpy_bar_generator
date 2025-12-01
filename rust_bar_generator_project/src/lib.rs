@@ -1279,7 +1279,7 @@ impl BarGenerator {
         let target_minutes: HashSet<u32> = (0..60).step_by(window).collect();
         let target_hours: HashSet<u32> = (0..24).step_by(window).collect();
         let target_days: HashSet<u32> = (1..32).step_by(window).collect();
-        let target_weeks: HashSet<u32> = (0..52).step_by(window).collect();
+        let target_weeks: HashSet<u32> = (1..54).step_by(window).collect();
         let target_months: HashSet<u32> = (1..13).step_by(window).collect();
 
         Ok(BarGenerator {
@@ -1604,12 +1604,40 @@ impl BarGenerator {
                 let last_value = self.get_interval_value_from_dt(&last_dt);
 
                 if now_value != last_value {
-                    if self.interval_slice && self.check_target_value(now_value) {
+                    // 判断是否使用目标时间点检查模式
+                    let use_target_check = match self.interval {
+                        // MINUTE: 当window能整除60，或者window>=60且能整除1440时，使用目标检查
+                        RustInterval::MINUTE => {
+                            if self.interval_slice {
+                                if self.window < 60 {
+                                    60 % self.window == 0
+                                } else {
+                                    1440 % self.window == 0
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                        // HOUR: 当window能整除24时，使用目标检查
+                        RustInterval::HOUR => self.interval_slice && 24 % self.window == 0,
+                        // DAILY: 当window能整除7时，使用目标检查
+                        RustInterval::DAILY => self.interval_slice && 7 % self.window == 0,
+                        // WEEKLY: 当window能整除52时，使用目标检查
+                        RustInterval::WEEKLY => self.interval_slice && 52 % self.window == 0,
+                        _ => self.interval_slice,
+                    };
+                    
+                    if use_target_check && self.check_target_value(now_value) {
                         finished = true;
-                    } else if !self.interval_slice {
-                        inner.interval_count += 1;
-                        if inner.interval_count % self.window == 0 {
-                            finished = true;
+                    } else if !use_target_check {
+                        // 使用基于epoch的绝对时间计算，确保推送时间与回测起点无关
+                        let current_epoch_period = self.get_epoch_period(&bar_dt);
+                        if let Some(last_dt) = last_dt_opt {
+                            let last_epoch_period = self.get_epoch_period(&last_dt);
+                            // 当跨越了一个完整的window周期时触发
+                            if current_epoch_period / (self.window as i64) != last_epoch_period / (self.window as i64) {
+                                finished = true;
+                            }
                         }
                     }
                 }
@@ -1641,6 +1669,7 @@ impl BarGenerator {
         // 第三阶段：更新 last_bar
         {
             let mut inner = self.inner.write().unwrap();
+
             inner.last_bar = Some(bar);
         }
         
@@ -1671,7 +1700,7 @@ impl BarGenerator {
             RustInterval::MINUTE => {
                 if self.interval_slice && self.window >= 60 {
                     // 对于大于等于60分钟的窗口，检查总分钟数是否是window的倍数
-                    value > 0 && (value as usize) % self.window == 0
+                    (value as usize) % self.window == 0
                 } else {
                     self.target_minutes.contains(&value)
                 }
@@ -1681,6 +1710,28 @@ impl BarGenerator {
             RustInterval::WEEKLY => self.target_weeks.contains(&value),
             RustInterval::MONTHLY => self.target_months.contains(&value),
             _ => false,
+        }
+    }
+    /// 获取基于epoch的周期值，用于非整除window的情况
+    fn get_epoch_period(&self, dt: &DateTime<chrono_tz::Tz>) -> i64 {
+        match self.interval {
+            RustInterval::MINUTE => {
+                // 从Unix epoch开始的总分钟数
+                dt.timestamp() / 60
+            }
+            RustInterval::HOUR => {
+                // 从Unix epoch开始的总小时数
+                dt.timestamp() / 3600
+            }
+            RustInterval::DAILY => {
+                // 从Unix epoch开始的总天数
+                dt.timestamp() / 86400
+            }
+            RustInterval::WEEKLY => {
+                // 从Unix epoch开始的总周数 (以周四为基准，因为1970-01-01是周四)
+                (dt.timestamp() / 86400 + 3) / 7
+            }
+            _ => 0,
         }
     }
 }
