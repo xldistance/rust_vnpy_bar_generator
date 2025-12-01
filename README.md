@@ -30,7 +30,7 @@ maturin build --release
 pip install target/wheels/*.whl
 ```
 ## 使用示例
-# 加时区会变慢，而且策略里面也没必要对TickData,BarData的datetime加时区
+### 加时区会变慢，而且策略里面也没必要对TickData,BarData的datetime加时区
 ```
 # RsutTickData,RustBatData,get_local_datetime的datetime无时区数据
 from rust_bar_generator import BarGenerator
