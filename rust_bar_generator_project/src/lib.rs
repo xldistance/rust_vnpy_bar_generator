@@ -1691,7 +1691,7 @@ impl BarGenerator {
 
     fn check_target_value(&self, value: u32) -> bool {
         match self.interval {
-            RustInterval::MINUTE => self.target_minutes.contains(&value)
+            RustInterval::MINUTE => self.target_minutes.contains(&value),
             RustInterval::HOUR => self.target_hours.contains(&value),
             RustInterval::DAILY => self.target_days.contains(&value),
             RustInterval::WEEKLY => self.target_weeks.contains(&value),
@@ -1716,4 +1716,5 @@ fn rust_bar_generator(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_local_datetime, m)?)?;
     Ok(())
 }
+
 
