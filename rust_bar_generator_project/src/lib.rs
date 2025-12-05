@@ -7,12 +7,15 @@ use pyo3::types::{PyDict, PyModule, PyTuple, PyDateTime};
 use regex::Regex;
 use std::sync::RwLock;
 use std::collections::{HashMap, HashSet};
-
+use std::sync::Once;
 // ================================================================================================
 // 时区常量
 // ================================================================================================
 static TZ_INFO: Lazy<chrono_tz::Tz> = Lazy::new(|| Shanghai);
 
+static ON_BAR_ERROR_ONCE: Once = Once::new();
+static ON_WINDOW_BAR_ERROR_ONCE: Once = Once::new();
+static GENERATE_ERROR_ONCE: Once = Once::new();
 // ================================================================================================
 // RustInterval 枚举 - 时间周期
 // ================================================================================================
@@ -1370,7 +1373,11 @@ impl BarGenerator {
                 
                 let trimmed_bar = trim_bar_time(py, new_bar)?;
                 // 回调在 RefCell 借用释放后执行，安全！
-                callback.call1(py, (trimmed_bar,))?;
+                if let Err(e) = callback.call1(py, (trimmed_bar,)) {
+                    GENERATE_ERROR_ONCE.call_once(|| {
+                        panic!("trimmed_bar回调处理错误：{:#?}", e);
+                    });
+                }
             }
         }
         Ok(())
@@ -1468,7 +1475,9 @@ impl BarGenerator {
             if let Some(ref callback) = self.on_bar {
                 let trimmed_bar = trim_bar_time(py, bar_data)?;
                 if let Err(e) = callback.call1(py, (trimmed_bar,)) {
-                    eprintln!("Error in on_bar callback: {:?}", e);
+                    ON_BAR_ERROR_ONCE.call_once(|| {
+                        panic!("on_bar回调处理错误：{:#?}", e);
+                    });
                 }
             }
         }
@@ -1656,7 +1665,9 @@ impl BarGenerator {
         if let Some(window_bar_data) = window_bar_to_callback {
             if let Some(ref callback) = self.on_window_bar {
                 if let Err(e) = callback.call1(py, (window_bar_data,)) {
-                        eprintln!("Error in on_window_bar callback: {:?}", e);
+                    ON_WINDOW_BAR_ERROR_ONCE.call_once(|| {
+                        panic!("on_window_bar回调处理错误：{:#?}", e);
+                    });
                     }
             }
         }
@@ -1723,6 +1734,3 @@ fn rust_bar_generator(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_local_datetime, m)?)?;
     Ok(())
 }
-
-
-
