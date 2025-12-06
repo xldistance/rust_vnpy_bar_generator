@@ -7,7 +7,6 @@ use pyo3::types::{PyDict, PyModule, PyTuple, PyDateTime};
 use regex::Regex;
 use std::sync::RwLock;
 use std::collections::{HashMap, HashSet};
-use std::sync::Once;
 // ================================================================================================
 // 时区常量
 // ================================================================================================
@@ -1665,7 +1664,7 @@ impl BarGenerator {
             }
         }
 
-        // 第三阶段更新 last_bar
+        // 第三阶段：更新 last_bar
         {
             let mut inner = self.inner.write().unwrap();
             // 最后更新 last_bar
