@@ -13,9 +13,6 @@ use std::sync::Once;
 // ================================================================================================
 static TZ_INFO: Lazy<chrono_tz::Tz> = Lazy::new(|| Shanghai);
 
-static ON_BAR_ERROR_ONCE: Once = Once::new();
-static ON_WINDOW_BAR_ERROR_ONCE: Once = Once::new();
-static GENERATE_ERROR_ONCE: Once = Once::new();
 // ================================================================================================
 // RustInterval 枚举 - 时间周期
 // ================================================================================================
@@ -1372,12 +1369,10 @@ impl BarGenerator {
                 new_bar.datetime = Some(py_dt.into());
                 
                 let trimmed_bar = trim_bar_time(py, new_bar)?;
-                // 回调在 RefCell 借用释放后执行，安全！
-                if let Err(e) = callback.call1(py, (trimmed_bar,)) {
-                    GENERATE_ERROR_ONCE.call_once(|| {
-                        panic!("trimmed_bar回调处理错误：{:#?}", e);
-                    });
-                }
+                // 将 panic 改为返回 PyResult 错误
+                callback.call1(py, (trimmed_bar,)).map_err(|e| {
+                    PyValueError::new_err(format!("trimmed_bar回调处理错误：{:#?}", e))
+                })?;
             }
         }
         Ok(())
@@ -1474,11 +1469,10 @@ impl BarGenerator {
         if let Some(bar_data) = old_bar {
             if let Some(ref callback) = self.on_bar {
                 let trimmed_bar = trim_bar_time(py, bar_data)?;
-                if let Err(e) = callback.call1(py, (trimmed_bar,)) {
-                    ON_BAR_ERROR_ONCE.call_once(|| {
-                        panic!("on_bar回调处理错误：{:#?}", e);
-                    });
-                }
+                // 将 panic 改为返回 PyResult 错误
+                callback.call1(py, (trimmed_bar,)).map_err(|e| {
+                    PyValueError::new_err(format!("on_bar回调处理错误：{:#?}", e))
+                })?;
             }
         }
 
@@ -1664,17 +1658,17 @@ impl BarGenerator {
         // 第二阶段：在 RefCell 借用释放后执行回调
         if let Some(window_bar_data) = window_bar_to_callback {
             if let Some(ref callback) = self.on_window_bar {
-                if let Err(e) = callback.call1(py, (window_bar_data,)) {
-                    ON_WINDOW_BAR_ERROR_ONCE.call_once(|| {
-                        panic!("on_window_bar回调处理错误：{:#?}", e);
-                    });
-                    }
+                // 将 panic 改为返回 PyResult 错误
+                callback.call1(py, (window_bar_data,)).map_err(|e| {
+                    PyValueError::new_err(format!("on_window_bar回调处理错误：{:#?}", e))
+                })?;
             }
         }
 
-        // 第三阶段：更新 last_bar
+        // 第三阶段更新 last_bar
         {
             let mut inner = self.inner.write().unwrap();
+            // 最后更新 last_bar
             inner.last_bar = Some(bar);
         }
         
