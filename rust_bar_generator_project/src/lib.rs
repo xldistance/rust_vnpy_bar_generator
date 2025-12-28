@@ -1278,7 +1278,7 @@ impl BarGenerator {
         let target_minutes: HashSet<u32> = (0..60).step_by(window).collect();
         let target_hours: HashSet<u32> = (0..24).step_by(window).collect();
         let target_days: HashSet<u32> = (1..32).step_by(window).collect();
-        let target_weeks: HashSet<u32> = (1..54).step_by(window).collect();
+        let target_weeks: HashSet<u32> = (1..53).step_by(window).collect();
         let target_months: HashSet<u32> = (1..13).step_by(window).collect();
 
         Ok(BarGenerator {
@@ -1677,7 +1677,7 @@ impl BarGenerator {
             }
             RustInterval::HOUR => dt.hour(),
             RustInterval::DAILY => dt.day(),
-            RustInterval::WEEKLY => dt.iso_week().week(),
+            RustInterval::WEEKLY => dt.iso_week().week().min(52),  // 限制最大为52,
             RustInterval::MONTHLY => dt.month(),
             _ => 0,
         }
@@ -1717,4 +1717,5 @@ fn rust_bar_generator(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_local_datetime, m)?)?;
     Ok(())
 }
+
 
