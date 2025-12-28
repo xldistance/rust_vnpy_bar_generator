@@ -1608,17 +1608,7 @@ impl BarGenerator {
                 if now_value != last_value {
                     // 判断是否使用目标时间点检查模式
                     let use_target_check = match self.interval {
-                        RustInterval::MINUTE => {
-                            if self.interval_slice {
-                                if self.window < 60 {
-                                    60 % self.window == 0
-                                } else {
-                                    1440 % self.window == 0
-                                }
-                            } else {
-                                false
-                            }
-                        }
+                        RustInterval::MINUTE => self.interval_slice && 1440 % self.window == 0,
                         RustInterval::HOUR => self.interval_slice && 24 % self.window == 0,
                         RustInterval::DAILY => self.interval_slice && 7 % self.window == 0,
                         RustInterval::WEEKLY => self.interval_slice && 52 % self.window == 0,
@@ -1727,3 +1717,4 @@ fn rust_bar_generator(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_local_datetime, m)?)?;
     Ok(())
 }
+
