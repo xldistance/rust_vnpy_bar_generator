@@ -1377,50 +1377,35 @@ impl BarGenerator {
         Ok(())
     }
 
+    /// 根据外部事件检查当前分钟 Bar 是否超时，并在必要时强制补发。
     fn generate_bar_event(&self, py: Python, _event: Bound<'_, PyAny>) -> PyResult<()> {
-        // 先检查并获取必要的数据，然后释放借用
-        // 修改：将 bar_dt 加入返回元组，使其能在作用域外使用
-        let (should_generate, bar_timestamp, vt_symbol, bar_dt) = {
+        let (should_generate, bar_minute_timestamp, vt_symbol, bar_dt_str) = {
             let inner = self.inner.read().unwrap();
-            
-            if inner.bar.is_none() {
+            let ms = match inner.bar_millis {
+                Some(ms) => ms,
+                None => return Ok(()),
+            };
+            let bar_dt = millis_to_shanghai(ms)
+                .ok_or_else(|| PyValueError::new_err("Bar datetime 转换失败"))?;
+            let bar_minute_timestamp = bar_dt
+                .with_second(0).unwrap()
+                .with_nanosecond(0).unwrap()
+                .timestamp_millis();
+            if inner.bar_push_status.contains(&bar_minute_timestamp) {
                 return Ok(());
             }
-            let bar = inner.bar.as_ref().unwrap();
-            let bar_dt = bar.get_datetime_chrono(py)?
-                .ok_or_else(|| PyValueError::new_err("Bar缺少datetime"))?;
-            let bar_timestamp = bar_dt.timestamp_millis();
-            if let Some(&status) = inner.bar_push_status.get(&bar_timestamp) {
-                if status {
-                    return Ok(());
-                }
-            }
-            let now_datetime = chrono::Utc::now().with_timezone(&*TZ_INFO);
-            let time_delta = now_datetime.signed_duration_since(bar_dt);
-            
-            let should_generate = time_delta > Duration::minutes(2);
-            let vt_symbol = bar.vt_symbol.clone();
-            
-            // 返回 bar_dt (DateTime<Tz> 实现了 Copy)
-            (should_generate, bar_timestamp, vt_symbol, bar_dt)
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            let should = (now_ms - ms) > 120_000;
+            let vt = inner.bar.as_ref().map(|b| b.vt_symbol.clone()).unwrap_or_default();
+            let dt_str = bar_dt.to_string();
+            (should, bar_minute_timestamp, vt, dt_str)
         };
-        
+
         if should_generate {
-            println!(
-                "合约：{}，最新bar时间：{}，分钟bar缺失即将强制合成分钟bar",
-                vt_symbol, bar_dt
-            );
-            
-            // 更新状态
-            {
-                let mut inner = self.inner.write().unwrap();
-                inner.bar_push_status.insert(bar_timestamp, true);
-            }
-            
-            // 调用 generate（RefCell 借用已释放）
+            println!("合约：{}，最新bar时间：{}，分钟bar缺失即将强制合成分钟bar", vt_symbol, bar_dt_str);
+            { self.inner.write().unwrap().bar_push_status.insert(bar_minute_timestamp); }
             self.generate(py)?;
         }
-        
         Ok(())
     }
     fn __repr__(&self) -> String {
